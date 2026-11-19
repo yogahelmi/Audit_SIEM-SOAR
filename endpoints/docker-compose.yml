@@ -1,0 +1,18 @@
+services:
+  web:
+    build: ./web
+    container_name: web-101032300037-yoga
+    hostname: web-101032300037-yoga
+    cap_add: [NET_ADMIN]
+    networks: [labnet]
+
+  attacker:
+    image: kalilinux/kali-rolling
+    container_name: attacker-101032300037-yoga
+    hostname: attacker-101032300037-yoga
+    command: sleep infinity
+    networks: [labnet]
+
+networks:
+  labnet:
+    driver: bridge
