@@ -1,0 +1,6 @@
+.env
+*.log
+artifacts/
+wazuh-docker/
+wazuh/generated/
+tests/results/

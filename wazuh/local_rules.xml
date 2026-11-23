@@ -1,0 +1,148 @@
+<!--
+  CLO3 custom detection rules (Wazuh 4.9.2)
+  Kelompok: 101032300037 Yoga Helmi Ilham Saputra / 101032300151 Muhammad Hafidz Abdurrahman
+
+  Rule ID yang diteruskan ke Shuffle (lihat wazuh/Initialize-Wazuh.ps1):
+    PB-01 Block IP   : 100100, 100101 (SSH brute force), 100210 (port scan)
+    PB-02 FIM        : 100300 (perubahan file web)
+    PB-03 Malware    : 100400 (hash malware cocok dengan CDB list)
+    PB-04 Akun/Priv  : 100110, 100111, 100112 (unauthorized login), 100600 (privilege escalation)
+  Rule 100500/100501 = bukti verifikasi dari skrip active response di endpoint.
+
+  Catatan: rule yang dirujuk if_sid / if_matched_sid harus didefinisikan LEBIH DULU.
+  Diuji dengan /var/ossec/bin/wazuh-logtest (lihat tests/logtest-samples.txt).
+-->
+
+<!-- Skenario 2: Unauthorized login -->
+<group name="clo3,sshd,">
+  <rule id="100110" level="8">
+    <if_sid>5710</if_sid>
+    <description>CLO3: Unauthorized login - percobaan login dengan akun tidak dikenal '$(srcuser)' dari $(srcip)</description>
+    <mitre>
+      <id>T1078</id>
+    </mitre>
+    <group>authentication_failed,invalid_login,unauthorized_login,clo3_account,</group>
+  </rule>
+
+  <rule id="100111" level="10">
+    <if_sid>5715</if_sid>
+    <!-- field "user" = user yang didekode sshd (tampil sebagai dstuser) -->
+    <list field="user" lookup="not_match_key">etc/lists/clo3-authorized-users</list>
+    <description>CLO3: Unauthorized login - akun '$(dstuser)' berhasil login dari $(srcip) tetapi tidak ada di daftar akun yang diizinkan</description>
+    <mitre>
+      <id>T1078</id>
+    </mitre>
+    <group>authentication_success,unauthorized_login,clo3_account,</group>
+  </rule>
+
+  <!-- Login sukses setelah rentetan login gagal (rule bawaan 40112 lebih dulu cocok
+       daripada 100111 bila login terjadi tepat setelah brute force). -->
+  <rule id="100112" level="13">
+    <if_sid>40112</if_sid>
+    <description>CLO3: Unauthorized login - login '$(dstuser)' berhasil dari $(srcip) setelah banyak login gagal (brute force berhasil?)</description>
+    <mitre>
+      <id>T1078</id>
+      <id>T1110</id>
+    </mitre>
+    <group>authentication_success,unauthorized_login,clo3_account,</group>
+  </rule>
+</group>
+
+<!-- Skenario 1: SSH brute force (banyak login gagal dari IP yang sama) -->
+<group name="clo3,sshd,authentication_failures,">
+  <rule id="100100" level="12" frequency="6" timeframe="60" ignore="30">
+    <if_matched_sid>5760</if_matched_sid>
+    <same_source_ip />
+    <description>CLO3: SSH brute force - 6+ login gagal dari $(srcip) dalam 60 detik</description>
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+    <group>brute_force,clo3_block_ip,</group>
+  </rule>
+
+  <rule id="100101" level="12" frequency="6" timeframe="60" ignore="30">
+    <if_matched_sid>100110</if_matched_sid>
+    <same_source_ip />
+    <description>CLO3: SSH brute force (akun tidak dikenal) - 6+ percobaan dari $(srcip) dalam 60 detik</description>
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+    <group>brute_force,clo3_block_ip,</group>
+  </rule>
+</group>
+
+<!-- Suricata (endpoint sensor): web attack dan port scan -->
+<group name="clo3,suricata,ids,">
+  <rule id="100200" level="10">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature_id">^1000001$|^1000002$</field>
+    <description>CLO3: Suricata web attack - $(alert.signature) dari $(src_ip)</description>
+    <mitre>
+      <id>T1190</id>
+    </mitre>
+    <group>web_attack,</group>
+  </rule>
+
+  <!-- Skenario 6: Port scanning -->
+  <rule id="100210" level="10">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature_id">^1000003$</field>
+    <description>CLO3: Port scan terdeteksi dari $(src_ip) (melewati threshold Suricata)</description>
+    <mitre>
+      <id>T1046</id>
+    </mitre>
+    <group>recon,port_scan,clo3_block_ip,</group>
+  </rule>
+</group>
+
+<!-- Skenario 3 & 4: File Integrity Monitoring dan Malware -->
+<group name="clo3,syscheck,">
+  <rule id="100300" level="10">
+    <if_sid>550,553,554</if_sid>
+    <field name="file">^/var/www/html</field>
+    <description>CLO3: File penting web berubah (added/modified/deleted) - $(file)</description>
+    <mitre>
+      <id>T1565.001</id>
+    </mitre>
+    <group>clo3_fim,</group>
+  </rule>
+
+  <rule id="100400" level="13">
+    <if_sid>100300</if_sid>
+    <list field="md5" lookup="match_key">etc/lists/clo3-malware-hashes</list>
+    <description>CLO3: Malware terdeteksi - hash $(md5) cocok dengan daftar malicious - $(file)</description>
+    <mitre>
+      <id>T1204.002</id>
+    </mitre>
+    <group>malware,clo3_malware,</group>
+  </rule>
+</group>
+
+<!-- Skenario 5: Privilege escalation -->
+<group name="clo3,sudo,">
+  <rule id="100600" level="12">
+    <if_sid>5405</if_sid>
+    <description>CLO3: Privilege escalation - user '$(srcuser)' (bukan sudoers) mencoba menjalankan sudo</description>
+    <mitre>
+      <id>T1548.003</id>
+    </mitre>
+    <group>privilege_escalation,clo3_account,</group>
+  </rule>
+</group>
+
+<!-- Verify: hasil skrip active response (log JSON /var/log/clo3-response.log di endpoint) -->
+<group name="clo3,active_response,">
+  <rule id="100500" level="5">
+    <decoded_as>json</decoded_as>
+    <field name="clo3_response.status">^success$</field>
+    <description>CLO3: Respons $(clo3_response.action) BERHASIL untuk $(clo3_response.target)</description>
+    <group>clo3_verify,</group>
+  </rule>
+
+  <rule id="100501" level="9">
+    <decoded_as>json</decoded_as>
+    <field name="clo3_response.status">^failed$|^skipped$</field>
+    <description>CLO3: Respons $(clo3_response.action) GAGAL/DILEWATI untuk $(clo3_response.target): $(clo3_response.detail)</description>
+    <group>clo3_verify,</group>
+  </rule>
+</group>

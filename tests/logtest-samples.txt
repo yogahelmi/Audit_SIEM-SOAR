@@ -1,0 +1,19 @@
+Nov 23 10:00:01 web sshd[101]: Failed password for yoga from 172.30.0.66 port 40001 ssh2
+Nov 23 10:00:02 web sshd[102]: Failed password for yoga from 172.30.0.66 port 40002 ssh2
+Nov 23 10:00:03 web sshd[103]: Failed password for yoga from 172.30.0.66 port 40003 ssh2
+Nov 23 10:00:04 web sshd[104]: Failed password for yoga from 172.30.0.66 port 40004 ssh2
+Nov 23 10:00:05 web sshd[105]: Failed password for yoga from 172.30.0.66 port 40005 ssh2
+Nov 23 10:00:06 web sshd[106]: Failed password for yoga from 172.30.0.66 port 40006 ssh2
+Nov 23 10:01:01 web sshd[201]: Invalid user hacker from 172.30.0.67 port 50000
+Nov 23 10:01:02 web sshd[201]: Invalid user admin from 172.30.0.67 port 50001
+Nov 23 10:01:03 web sshd[201]: Invalid user test from 172.30.0.67 port 50002
+Nov 23 10:01:04 web sshd[201]: Invalid user oracle from 172.30.0.67 port 50003
+Nov 23 10:01:05 web sshd[201]: Invalid user pi from 172.30.0.67 port 50004
+Nov 23 10:01:06 web sshd[201]: Invalid user ubuntu from 172.30.0.67 port 50005
+Nov 23 10:01:12 web sshd[202]: Accepted password for intern from 172.30.0.66 port 50001 ssh2
+Nov 23 10:01:13 web sshd[203]: Accepted password for yoga from 172.30.0.66 port 50002 ssh2
+Nov 23 10:01:14 web sudo:   intern : user NOT in sudoers ; TTY=pts/0 ; PWD=/home/intern ; USER=root ; COMMAND=/usr/bin/id
+{"timestamp":"2026-11-23T10:02:00.000000+0000","flow_id":1,"in_iface":"eth0","event_type":"alert","src_ip":"172.30.0.66","src_port":5555,"dest_ip":"172.30.0.20","dest_port":80,"proto":"TCP","alert":{"action":"allowed","gid":1,"signature_id":1000003,"rev":2,"signature":"CLO3 possible TCP SYN port scan","category":"Attempted Information Leak","severity":2}}
+{"timestamp":"2026-11-23T10:02:01.000000+0000","flow_id":2,"in_iface":"eth0","event_type":"alert","src_ip":"172.30.0.66","src_port":5556,"dest_ip":"172.30.0.20","dest_port":80,"proto":"TCP","alert":{"action":"allowed","gid":1,"signature_id":1000001,"rev":2,"signature":"CLO3 suspicious SQLi probe","category":"Web Application Attack","severity":1}}
+{"clo3_response":{"action":"block-ip","status":"success","target":"172.30.0.66","detail":"iptables DROP active in chain CLO3-BLOCK"}}
+{"clo3_response":{"action":"quarantine-file","status":"failed","target":"/var/www/html/uploads/x","detail":"file not found"}}

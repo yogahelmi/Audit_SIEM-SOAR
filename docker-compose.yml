@@ -1,0 +1,136 @@
+# CLO3 SOC lab - Wazuh SIEM + Shuffle SOAR
+# Kelompok: 101032300037 Yoga Helmi Ilham Saputra / 101032300151 Muhammad Hafidz Abdurrahman
+# Wazuh (manager/indexer/dashboard) dijalankan terpisah oleh wazuh/Initialize-Wazuh.ps1
+# dan bergabung ke jaringan clo3-soc-net dengan alias "wazuh.manager".
+name: clo3-soc
+
+x-identity: &identity
+  labels:
+    clo3.kelompok.nim: "101032300037,101032300151"
+    clo3.kelompok.nama: "Yoga Helmi Ilham Saputra, Muhammad Hafidz Abdurrahman"
+
+services:
+  # ---------- Endpoint 1: web server (SSH + Nginx + FIM) ----------
+  web:
+    <<: *identity
+    build: {context: ./endpoints, dockerfile: web/Dockerfile}
+    container_name: web-101032300037-101032300151
+    hostname: web-101032300037-101032300151
+    environment:
+      WAZUH_MANAGER: wazuh.manager
+    cap_add: [NET_ADMIN]
+    ports: ["8080:80", "2222:22"]
+    networks:
+      soc-net: {ipv4_address: 172.30.0.10}
+
+  # ---------- Endpoint 2: sensor (reverse proxy + Suricata IDS) ----------
+  sensor:
+    <<: *identity
+    build: {context: ./endpoints, dockerfile: sensor/Dockerfile}
+    container_name: sensor-101032300037-101032300151
+    hostname: sensor-101032300037-101032300151
+    environment:
+      WAZUH_MANAGER: wazuh.manager
+    cap_add: [NET_ADMIN, NET_RAW, SYS_NICE]
+    ports: ["8081:80"]
+    depends_on: [web]
+    networks:
+      soc-net: {ipv4_address: 172.30.0.20}
+
+  # ---------- Penyerang (simulasi) ----------
+  attacker:
+    <<: *identity
+    build: ./endpoints/attacker
+    container_name: attacker-101032300037-101032300151
+    hostname: attacker-101032300037-101032300151
+    # nmap di Kali memakai file capability; tanpa ini SYN scan gagal "Operation not permitted".
+    cap_add: [NET_RAW, NET_ADMIN]
+    networks:
+      soc-net: {ipv4_address: 172.30.0.66}
+
+  # ---------- Shuffle SOAR ----------
+  shuffle-backend:
+    <<: *identity
+    image: ghcr.io/shuffle/shuffle-backend:latest
+    container_name: shuffle-backend-101032300037-101032300151
+    hostname: shuffle-backend
+    environment:
+      SHUFFLE_APP_HOTLOAD_FOLDER: /shuffle-apps
+      ORG_ID: "Shuffle"
+      # Internal services must call the backend, not the browser-facing frontend.
+      BASE_URL: http://shuffle-backend:5001
+      BACKEND_HOSTNAME: shuffle-backend
+      # Security plugin is disabled on the lab OpenSearch service below, so use HTTP.
+      SHUFFLE_OPENSEARCH_URL: http://shuffle-opensearch:9200
+      SHUFFLE_OPENSEARCH_SKIPSSL_VERIFY: "true"
+      SHUFFLE_FILE_LOCATION: /shuffle-files
+      SHUFFLE_APP_DOWNLOAD_LOCATION: https://github.com/Shuffle/python-apps
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - shuffle-apps:/shuffle-apps
+      - shuffle-files:/shuffle-files
+    depends_on: [shuffle-opensearch]
+    networks: [soc-net]
+
+  # Official Shuffle runner: starts isolated containers for HTTP and other app actions.
+  shuffle-orborus:
+    <<: *identity
+    image: ghcr.io/shuffle/shuffle-orborus:latest
+    container_name: shuffle-orborus-101032300037-101032300151
+    environment:
+      ENVIRONMENT_NAME: Shuffle
+      ORG_ID: "Shuffle"
+      BASE_URL: http://shuffle-backend:5001
+      SHUFFLE_SWARM_CONFIG: run
+      SHUFFLE_WORKER_IMAGE: ghcr.io/shuffle/shuffle-worker:latest
+      SHUFFLE_APP_SDK_TIMEOUT: "300"
+      SHUFFLE_STATS_DISABLED: "true"
+      SHUFFLE_LOGS_DISABLED: "true"
+      CLEANUP: "false"
+      DOCKER_API_VERSION: "1.44"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on: [shuffle-backend]
+    networks: [soc-net]
+
+  shuffle-frontend:
+    <<: *identity
+    image: ghcr.io/shuffle/shuffle-frontend:latest
+    container_name: shuffle-frontend-101032300037-101032300151
+    hostname: shuffle-frontend
+    environment:
+      BACKEND_HOSTNAME: shuffle-backend
+    ports: ["3001:80"]
+    depends_on: [shuffle-backend]
+    networks: [soc-net]
+
+  shuffle-opensearch:
+    <<: *identity
+    image: opensearchproject/opensearch:2.11.1
+    container_name: shuffle-opensearch-101032300037-101032300151
+    hostname: shuffle-opensearch
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+    ulimits:
+      memlock: {soft: -1, hard: -1}
+    volumes: [shuffle-data:/usr/share/opensearch/data]
+    networks: [soc-net]
+
+networks:
+  soc-net:
+    name: clo3-soc-net
+    driver: bridge
+    ipam:
+      config:
+        # Endpoint memakai IP tetap (.10 web, .20 sensor, .66 attacker);
+        # container lain (Shuffle, Wazuh manager) mendapat IP dari .128-.254.
+        - subnet: 172.30.0.0/24
+          ip_range: 172.30.0.128/25
+          gateway: 172.30.0.1
+
+volumes:
+  shuffle-data:
+  shuffle-apps:
+  shuffle-files:

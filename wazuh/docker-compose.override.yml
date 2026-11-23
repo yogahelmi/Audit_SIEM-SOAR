@@ -1,0 +1,26 @@
+# Override untuk wazuh-docker/single-node (dipakai oleh wazuh/Initialize-Wazuh.ps1).
+# Path relatif terhadap wazuh-docker/single-node.
+# Isi /wazuh-config-mount disalin ke /var/ossec setiap container start, jadi konfigurasi
+# CLO3 tetap ada walaupun manager di-restart / dibuat ulang.
+services:
+  wazuh.manager:
+    volumes:
+      - ../../wazuh/generated/ossec.conf:/wazuh-config-mount/etc/ossec.conf
+      - ../../wazuh/local_rules.xml:/wazuh-config-mount/etc/rules/local_rules.xml
+      - ../../wazuh/lists/clo3-malware-hashes:/wazuh-config-mount/etc/lists/clo3-malware-hashes
+      - ../../wazuh/lists/clo3-authorized-users:/wazuh-config-mount/etc/lists/clo3-authorized-users
+      - ../../wazuh/custom-shuffle.py:/wazuh-config-mount/integrations/custom-shuffle
+    networks:
+      default: {}
+      clo3:
+        aliases: [wazuh.manager]
+
+  wazuh.indexer:
+    environment:
+      # Hemat RAM untuk laptop lab; naikkan ke 1g bila Docker punya >= 10 GB RAM.
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+
+networks:
+  clo3:
+    name: clo3-soc-net
+    external: true
