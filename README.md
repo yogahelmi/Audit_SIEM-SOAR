@@ -1,4 +1,4 @@
-# CLO 3 — SOC Lab: Wazuh SIEM + Shuffle SOAR
+# SOC Lab: Wazuh SIEM + Shuffle SOAR
 
 **Kelompok**
 
