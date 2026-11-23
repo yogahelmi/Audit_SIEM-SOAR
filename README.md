@@ -57,14 +57,14 @@ docker network rm clo3-soc-net 2>$null          # gagal? matikan dulu Wazuh: cd 
 # 1. Siapkan .env
 Copy-Item .env.example .env                     # lalu isi TELEGRAM_* (token baru)
 
-# 2. Endpoint + Shuffle
-docker compose up -d --build
+# 2. Endpoint + Shuffle (satu mesin). Untuk dua mesin lihat bagian "Deploy di dua mesin".
+docker compose --profile endpoints --profile soar up -d --build
 
 # 3. Wazuh (manager, indexer, dashboard) + rule + list + integrasi
 ./wazuh/Initialize-Wazuh.ps1
 ```
 
-4. Buka Wazuh Dashboard → **Agents**, pastikan `web-101032300037-101032300151` dan `sensor-101032300037-101032300151` berstatus **Active**. Jika belum muncul, jalankan `docker compose restart web sensor`. Agent lama (`*-101032300037-yoga`) bisa dihapus dengan `docker exec single-node-wazuh.manager-1 /var/ossec/bin/manage_agents -r <ID>`.
+4. Buka Wazuh Dashboard → **Agents**, pastikan `web-101032300037-101032300151` dan `sensor-101032300037-101032300151` berstatus **Active**. Jika belum muncul, jalankan `docker compose --profile endpoints restart web sensor`. Agent lama (`*-101032300037-yoga`) bisa dihapus dengan `docker exec single-node-wazuh.manager-1 /var/ossec/bin/manage_agents -r <ID>`.
 5. Buka Shuffle (`http://localhost:3001`), buat akun admin, lalu buat 4 workflow sesuai [shuffle/PLAYBOOKS.md](shuffle/PLAYBOOKS.md). Salin URL webhook ke `.env` (`SHUFFLE_HOOK_PB0x_*`).
 6. Jalankan lagi `./wazuh/Initialize-Wazuh.ps1` agar integrasi ke keempat webhook aktif.
 7. Uji: `./tests/run-10x.ps1 -Scenario bruteforce -Iterations 1`, lalu jalankan versi lengkap `./tests/run-10x.ps1`.
@@ -77,6 +77,60 @@ docker exec single-node-wazuh.manager-1 tail -f /var/ossec/logs/integrations.log
 docker exec web-101032300037-101032300151 tail -f /var/log/clo3-response.log      # hasil active response
 docker exec attacker-101032300037-101032300151 attack.sh sqli                    # alert Suricata 100200
 ```
+
+## Deploy di dua mesin (laptop ringan + PC server)
+
+Pembagiannya mengikuti beban RAM:
+
+| Mesin | Menjalankan | RAM Docker |
+|---|---|---|
+| **PC server** (RAM ≥ 12–16 GB) | Wazuh manager, indexer, dashboard + Shuffle (`--profile soar`) | ±6 GB |
+| **Laptop** | Endpoint web, sensor, attacker (`--profile endpoints`) | < 1 GB |
+
+Shuffle harus satu mesin dengan Wazuh, karena manager memanggil webhook Shuffle lewat jaringan Docker `clo3-soc-net` dan Shuffle memanggil Wazuh API/Indexer lewat `host.docker.internal`. Antar-mesin hanya ada dua jalur:
+- agent di laptop → manager di PC (port 1514/1515), yang juga dipakai untuk active response;
+- script uji di laptop → indexer di PC (port 9200).
+
+```text
+ LAPTOP                                           PC SERVER (IP mis. 192.168.1.50)
+ ┌───────────────────────────────┐   1514/1515   ┌──────────────────────────────────────┐
+ │ attacker ─> sensor ─> web     │ ────────────> │ Wazuh manager ─ indexer ─ dashboard   │
+ │ (agent)     (agent)  (agent)  │ <──────────── │      │ webhook          ▲ API/indexer │
+ │ tests/run-10x.ps1 ────────────┼──── 9200 ───> │      ▼                  │             │
+ └───────────────────────────────┘               │ Shuffle (PB-01..04) ────┘ ──> Telegram│
+                                                 └──────────────────────────────────────┘
+```
+
+### Di PC server
+
+```powershell
+git clone https://github.com/yogahelmi/Audit_SIEM-SOAR.git; cd Audit_SIEM-SOAR
+Copy-Item .env.example .env                   # isi SHUFFLE_HOOK_* nanti (langkah 4)
+./wazuh/Open-FirewallPorts.ps1                # Run as Administrator; catat IP LAN yang tampil
+docker compose --profile soar up -d           # Shuffle + membuat jaringan clo3-soc-net
+./wazuh/Initialize-Wazuh.ps1                  # Wazuh + rule + integrasi
+```
+
+Lalu buat 4 workflow di Shuffle (`http://<IP-PC>:3001`), isi `SHUFFLE_HOOK_*` di `.env` PC, dan jalankan `./wazuh/Initialize-Wazuh.ps1` sekali lagi. Variabel workflow Shuffle (`host.docker.internal`) tidak perlu diubah.
+
+### Di laptop
+
+```powershell
+# .env laptop: isi alamat PC server
+#   WAZUH_MANAGER=192.168.1.50
+#   WAZUH_INDEXER_URL=https://192.168.1.50:9200
+Test-NetConnection 192.168.1.50 -Port 1514     # harus TcpTestSucceeded : True
+Test-NetConnection 192.168.1.50 -Port 9200
+docker compose --profile endpoints up -d --build
+```
+
+Cek di Wazuh Dashboard (`https://<IP-PC>`) bahwa kedua agent **Active**, lalu jalankan pengujian dari laptop: `./tests/run-10x.ps1`.
+
+### Catatan jaringan
+- Kedua mesin harus berada di jaringan yang sama. Wi-Fi kampus sering memblokir koneksi antar-perangkat (*client isolation*). Jika `Test-NetConnection` gagal, pakai hotspot HP atau Tailscale/ZeroTier, lalu isi `WAZUH_MANAGER` dengan IP Tailscale PC.
+- Jika DHCP membuat IP PC berubah, perbarui `WAZUH_MANAGER` di `.env` laptop lalu jalankan `docker compose --profile endpoints up -d --force-recreate web sensor`.
+- Jam kedua mesin harus sinkron (Windows Time aktif), karena latency dihitung dari timestamp lintas mesin.
+- Blokir IP, karantina, dan kunci akun tetap terjadi di laptop: perintah active response dikirim manager lewat koneksi agent yang sudah terbuka (1514), jadi laptop tidak perlu membuka port masuk.
 
 ## Struktur proyek
 

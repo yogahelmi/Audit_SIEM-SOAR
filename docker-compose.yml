@@ -2,6 +2,12 @@
 # Kelompok: 101032300037 Yoga Helmi Ilham Saputra / 101032300151 Muhammad Hafidz Abdurrahman
 # Wazuh (manager/indexer/dashboard) dijalankan terpisah oleh wazuh/Initialize-Wazuh.ps1
 # dan bergabung ke jaringan clo3-soc-net dengan alias "wazuh.manager".
+#
+# Profil (boleh dijalankan di mesin berbeda):
+#   docker compose --profile endpoints up -d --build   -> web, sensor, attacker (ringan)
+#   docker compose --profile soar up -d                -> Shuffle (berat, satu mesin dengan Wazuh)
+#   docker compose --profile endpoints --profile soar up -d --build   -> semua di satu mesin
+# Jika Wazuh di mesin lain, isi WAZUH_MANAGER=<IP mesin Wazuh> di .env mesin endpoint.
 name: clo3-soc
 
 x-identity: &identity
@@ -12,12 +18,13 @@ x-identity: &identity
 services:
   # ---------- Endpoint 1: web server (SSH + Nginx + FIM) ----------
   web:
+    profiles: [endpoints]
     <<: *identity
     build: {context: ./endpoints, dockerfile: web/Dockerfile}
     container_name: web-101032300037-101032300151
     hostname: web-101032300037-101032300151
     environment:
-      WAZUH_MANAGER: wazuh.manager
+      WAZUH_MANAGER: ${WAZUH_MANAGER:-wazuh.manager}
     cap_add: [NET_ADMIN]
     ports: ["8080:80", "2222:22"]
     networks:
@@ -25,12 +32,13 @@ services:
 
   # ---------- Endpoint 2: sensor (reverse proxy + Suricata IDS) ----------
   sensor:
+    profiles: [endpoints]
     <<: *identity
     build: {context: ./endpoints, dockerfile: sensor/Dockerfile}
     container_name: sensor-101032300037-101032300151
     hostname: sensor-101032300037-101032300151
     environment:
-      WAZUH_MANAGER: wazuh.manager
+      WAZUH_MANAGER: ${WAZUH_MANAGER:-wazuh.manager}
     cap_add: [NET_ADMIN, NET_RAW, SYS_NICE]
     ports: ["8081:80"]
     depends_on: [web]
@@ -39,6 +47,7 @@ services:
 
   # ---------- Penyerang (simulasi) ----------
   attacker:
+    profiles: [endpoints]
     <<: *identity
     build: ./endpoints/attacker
     container_name: attacker-101032300037-101032300151
@@ -50,6 +59,7 @@ services:
 
   # ---------- Shuffle SOAR ----------
   shuffle-backend:
+    profiles: [soar]
     <<: *identity
     image: ghcr.io/shuffle/shuffle-backend:latest
     container_name: shuffle-backend-101032300037-101032300151
@@ -74,6 +84,7 @@ services:
 
   # Official Shuffle runner: starts isolated containers for HTTP and other app actions.
   shuffle-orborus:
+    profiles: [soar]
     <<: *identity
     image: ghcr.io/shuffle/shuffle-orborus:latest
     container_name: shuffle-orborus-101032300037-101032300151
@@ -94,6 +105,7 @@ services:
     networks: [soc-net]
 
   shuffle-frontend:
+    profiles: [soar]
     <<: *identity
     image: ghcr.io/shuffle/shuffle-frontend:latest
     container_name: shuffle-frontend-101032300037-101032300151
@@ -105,6 +117,7 @@ services:
     networks: [soc-net]
 
   shuffle-opensearch:
+    profiles: [soar]
     <<: *identity
     image: opensearchproject/opensearch:2.11.1
     container_name: shuffle-opensearch-101032300037-101032300151

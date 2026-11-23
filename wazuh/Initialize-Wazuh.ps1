@@ -27,7 +27,7 @@ $genDir   = Join-Path $PSScriptRoot "generated"
 # --- 0. Jaringan lab harus sudah ada (dibuat oleh `docker compose up -d` di root) ---
 $net = docker network ls --filter "name=^clo3-soc-net$" --format "{{.Name}}"
 if (-not $net) {
-  throw "Jaringan clo3-soc-net belum ada. Jalankan dulu dari root proyek: docker compose up -d --build"
+  throw "Jaringan clo3-soc-net belum ada. Jalankan dulu dari root proyek: docker compose --profile soar up -d (atau --profile endpoints)"
 }
 
 # --- 1. wazuh-docker + sertifikat ---

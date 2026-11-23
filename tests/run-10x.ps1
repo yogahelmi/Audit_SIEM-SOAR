@@ -39,7 +39,7 @@ if (Test-Path $envFile) {
 function Assert-ContainerRunning([string]$Name) {
   $state = docker inspect --format '{{.State.Running}}' $Name
   if ($LASTEXITCODE -ne 0 -or "$state".Trim() -ne 'true') {
-    throw "Container '$Name' belum berjalan. Jalankan dari root proyek: docker compose up -d --build"
+    throw "Container '$Name' belum berjalan. Jalankan dari root proyek: docker compose --profile endpoints up -d --build"
   }
 }
 
